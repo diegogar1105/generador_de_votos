@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generador Electoral - República de San Marcos</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f9fb;
+        }
+        .container { max-width: 1200px; }
+        .party-input {
+            width: 100%;
+            padding: 8px;
+            text-align: center;
+            border-radius: 0.375rem; /* rounded-md */
+            border: 1px solid #d1d5db;
+            transition: all 0.2s;
+        }
+        .party-input:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.5);
+        }
+        .tooltip-container {
+            position: relative;
+            display: inline-block;
+        }
+        .tooltip-text {
+            visibility: hidden;
+            background-color: #333;
+            color: #fff;
+            text-align: center;
+            padding: 5px 10px;
+            border-radius: 6px;
+            position: absolute;
+            z-index: 10;
+            bottom: 125%; /* Posición encima */
+            left: 50%;
+            transform: translateX(-50%);
+            opacity: 0;
+            transition: opacity 0.3s;
+            white-space: nowrap;
+        }
+        .tooltip-container:hover .tooltip-text {
+            visibility: visible;
+            opacity: 1;
+        }
+        /* Colores de los partidos */
+        .usm-color { background-color: #fca5a5; } /* Red-300 */
+        .unsm-color { background-color: #93c5fd; } /* Blue-300 */
+        .mnsm-color { background-color: #a7f3d0; } /* Green-300 */
+    </style>
+</head>
+<body>
+
+    <div id="app" class="container mx-auto p-4 md:p-8">
+
+        <!-- Header -->
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-extrabold text-gray-800">📊 Generador Electoral</h1>
+            <h2 class="text-xl font-semibold text-gray-600 mt-1">República de San Marcos</h2>
+            <p class="mt-2 text-sm text-gray-500">Simulación de Votos Municipales Históricos y Encuestas Nacionales</p>
+        </header>
+
+        <!-- Controles Principales -->
+        <div class="bg-white p-6 rounded-xl shadow-lg mb-8">
+            <h3 class="text-2xl font-bold mb-4 text-gray-700">Configuración de la Elección</h3>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <!-- Selector de Año -->
+                <div>
+                    <label for="electionYear" class="block text-sm font-medium text-gray-700 mb-1">Año Electoral a Simular:</label>
+                    <input type="number" id="electionYear" value="2024" min="2024" class="party-input" placeholder="Ej: 2028">
+                </div>
+
+                <!-- Historial -->
+                <div class="md:col-span-2">
+                    <label for="historySelector" class="block text-sm font-medium text-gray-700 mb-1">Cargar Resultados Históricos:</label>
+                    <select id="historySelector" class="party-input bg-white" onchange="loadHistoricalElection()">
+                        <option value="">Selecciona un año guardado...</option>
+                    </select>
+                </div>
+            </div>
+
+            <div id="error-message" class="mt-4 text-red-600 font-semibold hidden"></div>
+
+            <button onclick="generateElection()"
+                class="mt-6 w-full py-3 px-4 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700 transition duration-200 focus:outline-none focus:ring-4 focus:ring-indigo-500/50">
+                Generar Resultados para el Año <span id="currentYearDisplay">2024</span>
+            </button>
+        </div>
+
+        <!-- Matriz de Ponderación -->
+        <div class="bg-white p-6 rounded-xl shadow-lg mb-8">
+            <h3 class="text-2xl font-bold mb-4 text-gray-700">Matriz de Potencial Electoral (Ponderación 0-10)</h3>
+            <p class="text-sm text-gray-500 mb-4">Define la fuerza de cada partido en cada municipio. (0 = Sin presencia, 10 = Victoria arrasadora)</p>
+
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky left-0 bg-gray-50 z-10">Municipio (Estado)</th>
+                            <th class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Censo Proyectado <span id="censusYearDisplay">2024</span></th>
+                            <th class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider tooltip-container">
+                                USM <span class="tooltip-text">Unión por San Marcos</span>
+                            </th>
+                            <th class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider tooltip-container">
+                                UNSM <span class="tooltip-text">Un Nuevo San Marcos</span>
+                            </th>
+                            <th class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider tooltip-container">
+                                MNSM <span class="tooltip-text">Movimiento Nacional San Marcos</span>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody id="weightingTableBody" class="bg-white divide-y divide-gray-200">
+                        <!-- Filas de municipios generadas por JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+      
+        <!-- Resultados de la Encuesta Nacional (Antes de los Votos Finales) -->
+        <div id="surveySection" class="bg-yellow-100 p-6 rounded-xl shadow-md mb-8 hidden border-l-4 border-yellow-500">
+            <h3 class="text-2xl font-bold mb-4 text-yellow-800">Encuesta Nacional Simulada</h3>
+            <p class="text-sm text-yellow-700 mb-4">Esta es la proyección de la encuesta (margen de error $\pm 3\%$).</p>
+            <div id="surveyResults" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <!-- Resultados de la encuesta generados por JS -->
+            </div>
+        </div>
+
+
+        <!-- Resultados Detallados por Municipio -->
+        <div id="resultsSection" class="bg-white p-6 rounded-xl shadow-lg mb-8 hidden">
+            <h3 class="text-2xl font-bold mb-4 text-gray-700">Resultados Brutos por Municipio: <span id="resultsYear">2024</span></h3>
+            <p class="text-sm text-gray-500 mb-4">Votos finales generados. Estos son los números que debes registrar.</p>
+
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider sticky left-0 bg-gray-50 z-10">Municipio</th>
+                            <th class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Censo Electoral</th>
+                            <th class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider usm-color">Votos USM</th>
+                            <th class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider unsm-color">Votos UNSM</th>
+                            <th class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider mnsm-color">Votos MNSM</th>
+                            <th class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Total Votos</th>
+                            <th class="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">% Part.</th>
+                        </tr>
+                    </thead>
+                    <tbody id="finalResultsTableBody" class="bg-white divide-y divide-gray-200">
+                        <!-- Resultados finales generados por JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Modal de Notificación -->
+        <div id="notificationModal" class="fixed inset-0 bg-gray-600 bg-opacity-75 hidden items-center justify-center p-4 z-50">
+            <div class="bg-white p-6 rounded-xl shadow-2xl max-w-sm w-full">
+                <h4 id="modalTitle" class="text-xl font-bold mb-4 text-gray-800"></h4>
+                <p id="modalMessage" class="text-gray-600 mb-6"></p>
+                <button onclick="closeModal()" class="w-full py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition duration-200">Cerrar</button>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // Configuración inicial del país
+        const PARTIES = [
+            { id: 'USM', name: 'Unión por San Marcos', color: 'bg-red-500' },
+            { id: 'UNSM', name: 'Un Nuevo San Marcos', color: 'bg-blue-500' },
+            { id: 'MNSM', name: 'Movimiento Nacional San Marcos', color: 'bg-green-500' },
+        ];
+
+        // Censo Electoral de 2024 (Población Electoral Base)
+        const BASE_CENSUS_2024 = [
+            { state: 'Estado Capital', name: 'San Marcos', census: 1792243 },
+            { state: 'Estado Capital', name: 'Puerto Alegre', census: 879344 },
+            { state: 'Estado Unión', name: 'La Concordia', census: 1578390 },
+            { state: 'Estado Unión', name: 'Villa Progreso', census: 1828172 },
+            { state: 'Estado Unión', name: 'Nueva Esperanza', census: 1499511 },
+            { state: 'Estado Domingo', name: 'Santo Domingo', census: 1838983 },
+            { state: 'Estado Domingo', name: 'Las Colinas', census: 937953 },
+            { state: 'Estado Domingo', name: 'Santa María', census: 1241191 },
+            { state: 'Estado Domingo', name: 'El Pilar', census: 1886521 },
+        ];
+
+        const MIN_ANNUAL_GROWTH = 0.005; // 0.5%
+        const MAX_ANNUAL_GROWTH = 0.015; // 1.5%
+        const VOTE_NOISE_PERCENTAGE = 0.03; // +- 3% de ruido en los votos
+  
+        // --- Funciones de Utilidad ---
+
+        /** Muestra un modal de notificación */
+        function showModal(title, message) {
+            document.getElementById('modalTitle').textContent = title;
+            document.getElementById('modalMessage').textContent = message;
+            document.getElementById('notificationModal').classList.remove('hidden');
+            document.getElementById('notificationModal').classList.add('flex');
+        }
+
+        /** Cierra el modal de notificación */
+        function closeModal() {
+            document.getElementById('notificationModal').classList.add('hidden');
+            document.getElementById('notificationModal').classList.remove('flex');
+        }
+
+        /** Genera un número entero aleatorio dentro de un rango. */
+        function getRandomInt(min, max) {
+            return Math.floor(Math.random() * (max - min + 1)) + min;
+        }
+
+        /** Genera un número flotante aleatorio dentro de un rango. */
+        function getRandomFloat(min, max) {
+            return Math.random() * (max - min) + min;
+        }
+
+        /** Formatea un número como string con separadores de miles */
+        function formatNumber(num) {
+            return new Intl.NumberFormat('es-VE').format(Math.round(num));
+        }
+
+        /** Muestra un mensaje de error en la interfaz */
+        function displayError(message) {
+            const errorDiv = document.getElementById('error-message');
+            errorDiv.textContent = message;
+            errorDiv.classList.remove('hidden');
+            setTimeout(() => {
+                errorDiv.classList.add('hidden');
+            }, 5000);
+        }
+
+        // --- Persistencia y Censo Electoral (Puntos 1 y 2) ---
+
+        /** Obtiene el censo electoral para el año dado, aplicando crecimiento si es necesario. */
+        function getCensusForYear(targetYear) {
+            const history = getHistory();
+            const lastYear = Math.max(...Object.keys(history).map(Number).filter(y => y < targetYear), 2024);
+
+            let censusData;
+
+            if (targetYear === 2024) {
+                // Año base
+                censusData = BASE_CENSUS_2024;
+            } else if (history[targetYear]) {
+                // Año ya guardado (histórico)
+                censusData = history[targetYear].census;
+            } else {
+                // Calcular crecimiento a partir del último censo conocido
+                const startCensus = lastYear === 2024 ? BASE_CENSUS_2024 : history[lastYear].census;
+                const yearsToGrow = targetYear - lastYear;
+
+                censusData = startCensus.map(m => {
+                    let currentCensus = m.census;
+                    for (let y = 0; y < yearsToGrow; y++) {
+                        // Crecimiento anual aleatorio entre 0.5% y 1.5%
+                        const growthRate = getRandomFloat(MIN_ANNUAL_GROWTH, MAX_ANNUAL_GROWTH);
+                        currentCensus = currentCensus * (1 + growthRate);
+                    }
+                    return { ...m, census: Math.round(currentCensus) };
+                });
+
+                // Advertencia: El censo proyectado solo se guarda junto a los resultados de la elección.
+                // Si el usuario no genera votos para un año, el censo de ese año no queda fijo.
+            }
+            return censusData;
+        }
+  
+        /** Devuelve todo el historial guardado en localStorage. */
+        function getHistory() {
+            const historyJson = localStorage.getItem('sanMarcosElections');
+            return historyJson ? JSON.parse(historyJson) : {};
+        }
+
+        /** Guarda los resultados de una elección en localStorage. */
+        function saveElectionResults(year, census, results) {
+            const history = getHistory();
+            history[year] = { census: census, results: results, timestamp: new Date().toISOString() };
+            localStorage.setItem('sanMarcosElections', JSON.stringify(history));
+            updateHistorySelector(history);
+            showModal("Éxito", `Los resultados y el censo electoral para el año ${year} han sido guardados.`);
+        }
+
+        /** Actualiza el selector de historial en la UI */
+        function updateHistorySelector(history) {
+            const selector = document.getElementById('historySelector');
+            selector.innerHTML = '<option value="">Selecciona un año guardado...</option>';
+            const years = Object.keys(history).map(Number).sort((a, b) => b - a);
+            years.forEach(year => {
+                const option = document.createElement('option');
+                option.value = year;
+                option.textContent = `Elección ${year}`;
+                selector.appendChild(option);
+            });
+        }
+
+        // --- Generación de Interfaz ---
+
+        /** Dibuja la tabla de ponderaciones y el censo proyectado. */
+        function renderWeightingTable(censusData, initialWeights = {}) {
+            const tbody = document.getElementById('weightingTableBody');
+            tbody.innerHTML = '';
+            const year = document.getElementById('electionYear').value;
+
+            document.getElementById('censusYearDisplay').textContent = year;
+            document.getElementById('currentYearDisplay').textContent = year;
+
+            censusData.forEach((municipio) => {
+                const row = tbody.insertRow();
+                row.className = 'hover:bg-gray-100 transition duration-150';
+
+                // Columna 1: Municipio y Estado
+                let cell = row.insertCell();
+                cell.className = 'px-3 py-3 whitespace-nowrap text-sm font-semibold text-gray-900 sticky left-0 bg-white';
+                cell.innerHTML = `
+                    ${municipio.name}
+                    <div class="text-xs font-normal text-gray-500">(${municipio.state})</div>
+                `;
+
+                // Columna 2: Censo Proyectado
+                cell = row.insertCell();
+                cell.className = 'px-3 py-3 whitespace-nowrap text-sm text-gray-500 text-center';
+                cell.textContent = formatNumber(municipio.census);
+
+                // Columnas de Ponderación (Inputs)
+                PARTIES.forEach(party => {
+                    const partyId = party.id;
+                    const initialWeight = initialWeights[municipio.name] ? initialWeights[municipio.name][partyId] : 5; // Default 5
+                    cell = row.insertCell();
+                    cell.className = 'px-3 py-3 whitespace-nowrap';
+                    const input = document.createElement('input');
+                    input.type = 'number';
+                    input.min = '0';
+                    input.max = '10';
+                    input.value = initialWeight;
+                    input.id = `weight-${municipio.name.replace(/\s/g, '_')}-${partyId}`;
+                    input.classList.add('party-input', `border-${partyId.toLowerCase()}-500`);
+                    cell.appendChild(input);
+                });
+            });
+        }
+  
+        /** Inicializa la aplicación cargando el censo base y el historial. */
+        function initializeApp() {
+            const history = getHistory();
+            updateHistorySelector(history);
+            const currentCensus = getCensusForYear(2024);
+            renderWeightingTable(currentCensus);
+        }
+
+        // --- Lógica de Generación de Votos (Núcleo) ---
+
+        /** Lee las ponderaciones de la matriz de la UI. */
+        function getWeightsFromUI(censusData) {
+            const weights = {};
+            let isValid = true;
+
+            censusData.forEach(m => {
+                weights[m.name] = {};
+                let totalWeight = 0;
+                PARTIES.forEach(p => {
+                    const input = document.getElementById(`weight-${m.name.replace(/\s/g, '_')}-${p.id}`);
+                    const weight = parseInt(input ? input.value : 0);
+
+                    if (isNaN(weight) || weight < 0 || weight > 10) {
+                        isValid = false;
+                        displayError(`Error: La ponderación para ${m.name} (${p.id}) debe ser un número entre 0 y 10.`);
+                        return;
+                    }
+                    weights[m.name][p.id] = weight;
+                    totalWeight += weight;
+                });
+
+                if (totalWeight === 0 && isValid) {
+                    isValid = false;
+                    displayError(`Error: La suma de ponderaciones para ${m.name} no puede ser cero. Por favor, asigna al menos un punto.`);
+                }
+            });
+            return isValid ? weights : null;
+        }
+
+        /** Genera los votos brutos por municipio y partido. */
+        function generateVotes(censusData, weights) {
+            const results = [];
+            let totalVotesNational = 0;
+            let totalPartyVotesNational = { USM: 0, UNSM: 0, MNSM: 0 };
+
+            censusData.forEach(m => {
+                const totalWeight = PARTIES.reduce((sum, p) => sum + weights[m.name][p.id], 0);
+                const municipalResults = {
+                    municipality: m.name,
+                    state: m.state,
+                    census: m.census,
+                    votes: {},
+                    totalVotes: 0,
+                    participation: 0,
+                };
+
+                let totalVotesInMunicipality = 0;
+
+                PARTIES.forEach(p => {
+                    const partyId = p.id;
+                    const weight = weights[m.name][partyId];
+
+                    // 1. Votos Ideales (Proporcional a la Ponderación)
+                    const idealVoteShare = weight / totalWeight;
+                    const idealVotes = m.census * idealVoteShare;
+
+                    // 2. Ruido Aleatorio (Simulando Error/Dispersión)
+                    // Ruido entre -3% y +3% del total municipal. Esto simula el "ruido" de la elección.
+                    const noiseFactor = getRandomFloat(-VOTE_NOISE_PERCENTAGE, VOTE_NOISE_PERCENTAGE);
+                    const noise = idealVotes * noiseFactor;
+
+                    // 3. Votos Finales (Ideal + Ruido), asegurando que no sea negativo y entero
+                    let finalVotes = Math.max(0, Math.round(idealVotes + noise));
+
+                    // Ajuste para evitar que la suma de votos exceda el censo (aunque es raro)
+                    if (finalVotes > m.census) {
+                        finalVotes = m.census;
+                    }
+
+                    municipalResults.votes[partyId] = finalVotes;
+                    totalVotesInMunicipality += finalVotes;
+                    totalPartyVotesNational[partyId] += finalVotes;
+                });
+
+                municipalResults.totalVotes = totalVotesInMunicipality;
+                municipalResults.participation = (totalVotesInMunicipality / m.census) * 100;
+                results.push(municipalResults);
+                totalVotesNational += totalVotesInMunicipality;
+            });
+
+            return { municipalResults: results, nationalTotals: totalPartyVotesNational, nationalTotalVotes: totalVotesNational };
+        }
+  
+        /** Genera y muestra la encuesta nacional simulada. (Punto 4) */
+        function generateAndRenderSurvey(nationalTotals, nationalTotalVotes) {
+            const surveyDiv = document.getElementById('surveyResults');
+            surveyDiv.innerHTML = '';
+            document.getElementById('surveySection').classList.remove('hidden');
+
+            const MOE = 0.03; // Margen de Error de +- 3%
+            const total = nationalTotalVotes;
+
+            PARTIES.forEach(p => {
+                const realPercentage = (nationalTotals[p.id] / total) * 100;
+
+                // Aplicar un error aleatorio DENTRO del MOE (ej. entre -3 y +3)
+                const randomError = getRandomFloat(-MOE, MOE) * 100;
+                const surveyPercentage = Math.max(0, Math.min(100, realPercentage + randomError)); // Asegurar que sea entre 0 y 100
+
+                const card = document.createElement('div');
+                card.className = 'p-4 rounded-lg shadow-md transition-all duration-300';
+
+                // Definir color de fondo según el partido
+                let bgColorClass = '';
+                if (p.id === 'USM') bgColorClass = 'usm-color';
+                else if (p.id === 'UNSM') bgColorClass = 'unsm-color';
+                else if (p.id === 'MNSM') bgColorClass = 'mnsm-color';
+
+                card.classList.add(bgColorClass);
+
+                card.innerHTML = `
+                    <p class="text-sm font-semibold text-gray-800">${p.name} (${p.id})</p>
+                    <p class="text-3xl font-extrabold mt-1 text-gray-900">${surveyPercentage.toFixed(2)}%</p>
+                    <p class="text-xs text-gray-700">Estimación</p>
+                `;
+                surveyDiv.appendChild(card);
+            });
+        }
+  
+        /** Renderiza los votos brutos por municipio. */
+        function renderFinalResults(results, year) {
+            const tbody = document.getElementById('finalResultsTableBody');
+            tbody.innerHTML = '';
+            document.getElementById('resultsYear').textContent = year;
+            document.getElementById('resultsSection').classList.remove('hidden');
+
+            results.forEach((m) => {
+                const row = tbody.insertRow();
+                row.className = 'hover:bg-gray-50 transition duration-150';
+
+                // Columna 1: Municipio
+                let cell = row.insertCell();
+                cell.className = 'px-3 py-3 whitespace-nowrap text-sm font-semibold text-gray-900 sticky left-0 bg-white';
+                cell.textContent = m.municipality;
+
+                // Columna 2: Censo
+                cell = row.insertCell();
+                cell.className = 'px-3 py-3 whitespace-nowrap text-sm text-gray-500 text-center';
+                cell.textContent = formatNumber(m.census);
+
+                // Columnas 3, 4, 5: Votos por Partido
+                PARTIES.forEach(p => {
+                    cell = row.insertCell();
+                    cell.className = 'px-3 py-3 whitespace-nowrap text-sm font-bold text-gray-800 text-center';
+                    cell.textContent = formatNumber(m.votes[p.id]);
+                });
+
+                // Columna 6: Total Votos
+                cell = row.insertCell();
+                cell.className = 'px-3 py-3 whitespace-nowrap text-sm font-bold text-indigo-700 text-center';
+                cell.textContent = formatNumber(m.totalVotes);
+
+                // Columna 7: % Participación
+                cell = row.insertCell();
+                cell.className = 'px-3 py-3 whitespace-nowrap text-sm text-gray-700 text-center';
+                cell.textContent = `${m.participation.toFixed(2)}%`;
+            });
+        }
+
+        // --- Funciones de Control de la Aplicación ---
+
+        /** Función principal para generar la elección. */
+        function generateElection() {
+            const yearInput = document.getElementById('electionYear');
+            const targetYear = parseInt(yearInput.value);
+
+            if (isNaN(targetYear) || targetYear < 2024) {
+                displayError("El año electoral debe ser un número igual o posterior a 2024.");
+                return;
+            }
+
+            // 1. Obtener Censo Proyectado
+            const currentCensus = getCensusForYear(targetYear);
+
+            // 2. Obtener Ponderaciones de la UI
+            const weights = getWeightsFromUI(currentCensus);
+            if (!weights) return; // Si hay error en los pesos, la función de error ya notificó.
+
+            // 3. Generar Votos
+            const { municipalResults, nationalTotals, nationalTotalVotes } = generateVotes(currentCensus, weights);
+
+            // 4. Guardar y Renderizar
+            saveElectionResults(targetYear, currentCensus, municipalResults);
+            renderFinalResults(municipalResults, targetYear);
+            generateAndRenderSurvey(nationalTotals, nationalTotalVotes);
+        }
+
+        /** Carga una elección histórica seleccionada en la UI. */
+        function loadHistoricalElection() {
+            const year = document.getElementById('historySelector').value;
+            if (!year) {
+                document.getElementById('resultsSection').classList.add('hidden');
+                document.getElementById('surveySection').classList.add('hidden');
+                initializeApp(); // Reinicia la tabla de ponderaciones con el censo actual proyectado
+                return;
+            }
+
+            const history = getHistory();
+            const electionData = history[year];
+
+            if (electionData) {
+                document.getElementById('electionYear').value = year;
+                
+                // 1. Recrear Ponderaciones
+                const weightsToLoad = {};
+                
+                // Nota: Las ponderaciones no se guardan directamente, pero se pueden recrear
+                // mostrando el censo usado y los resultados. Aquí solo renderizamos los resultados finales.
+                
+                // 2. Renderizar Ponderaciones (Para ver el censo base usado)
+                renderWeightingTable(electionData.census, weightsToLoad);
+
+                // 3. Renderizar Resultados Finales
+                renderFinalResults(electionData.results, year);
+                
+                // 4. Recalcular Totales para la Encuesta (para mostrarla de forma consistente)
+                let nationalTotals = { USM: 0, UNSM: 0, MNSM: 0 };
+                let nationalTotalVotes = 0;
+                electionData.results.forEach(m => {
+                    PARTIES.forEach(p => {
+                        nationalTotals[p.id] += m.votes[p.id];
+                    });
+                    nationalTotalVotes += m.totalVotes;
+                });
+                             
+                // 5. Generar y Renderizar Encuesta (usando los totales reales guardados)
+                generateAndRenderSurvey(nationalTotals, nationalTotalVotes);
+
+                showModal("Histórico Cargado", `Se han cargado los resultados de la Elección ${year}.`);
+
+            } else {
+                displayError("No se encontraron datos para el año seleccionado.");
+            }
+        }
+
+        // Inicializar la aplicación al cargar la página
+        window.onload = initializeApp;
+    </script>
+</body>
+</html>
